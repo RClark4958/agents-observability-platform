@@ -72,8 +72,14 @@ serve-stop:
     -pkill -f mlx_lm.server && echo "stopped" || echo "nothing running"
 
 # Is the model server up, and which models does it know about
-serve-status:
-    @curl -sf http://127.0.0.1:8080/v1/models | python3 -c 'import sys,json; [print(m["id"]) for m in json.load(sys.stdin)["data"]]' || echo "no server on :8080"
+serve-status port="8080":
+    #!/usr/bin/env bash
+    if out=$(curl -sf --max-time 3 http://127.0.0.1:{{port}}/v1/models); then
+      echo "server on :{{port}} knows these models:"
+      echo "$out" | python3 -c 'import sys,json; [print("  " + m["id"]) for m in json.load(sys.stdin)["data"]]'
+    else
+      echo "no server on :{{port}}"
+    fi
 
 # One question to the agent (traced)
 chat message:
