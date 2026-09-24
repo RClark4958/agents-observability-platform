@@ -46,8 +46,15 @@ def phoenix() -> tuple[int, str]:
 
 
 def tempo() -> tuple[int, str]:
+    # Without an explicit window Tempo searches only its most recent block; pass the last 24h.
+    import time
+
+    now = int(time.time())
     q = urllib.parse.quote(f'{{ resource.service.name = "{SERVICE}" }}')
-    url = f"{GRAFANA}/api/datasources/proxy/uid/tempo/api/search?q={q}&limit=100"
+    url = (
+        f"{GRAFANA}/api/datasources/proxy/uid/tempo/api/search"
+        f"?q={q}&limit=100&start={now - 86400}&end={now}"
+    )
     auth = base64.b64encode(b"admin:admin").decode()
     traces = _get(url, headers={"Authorization": f"Basic {auth}"}).get("traces", [])
     return len(traces), f"{len(traces)} traces (TraceQL via Grafana proxy)"

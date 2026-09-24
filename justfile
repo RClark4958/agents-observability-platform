@@ -55,6 +55,19 @@ check:
     docker compose config --quiet
     docker run --rm -v "$PWD/otel:/etc/otelcol:ro" otel/opentelemetry-collector-contrib:latest validate --config=/etc/otelcol/base.yaml
 
+# Serve the local model with mlx_lm (OpenAI-compatible on :8080, Gemma 4 tool-call parser built in)
+serve model=env("PAYERBENCH_MODEL", "mlx-community/gemma-4-31b-it-8bit"):
+    HF_HOME=$HOME/models/hf mlx_lm.server --model {{model}} --host 127.0.0.1 --port 8080 \
+      --chat-template-args '{"enable_thinking": false}'
+
+# One question to the agent (traced)
+chat message:
+    uv run payerbench chat "{{message}}"
+
+# Run every canned scenario (one trace each)
+demo *args:
+    uv run payerbench demo {{args}}
+
 # Send one hand-built trace through the collector
 smoke:
     uv run python scripts/smoke_trace.py
