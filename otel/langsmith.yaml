@@ -1,0 +1,14 @@
+# Add-on merged over base.yaml when OTEL_EXTRA_CONFIG=langsmith.yaml (just up-cloud).
+# Lists are replaced, not appended, on merge, so the full exporter list is restated here.
+
+exporters:
+  otlphttp/langsmith:
+    endpoint: https://api.smith.langchain.com/otel
+    headers:
+      x-api-key: "${env:LANGSMITH_API_KEY}"
+      Langsmith-Project: "${env:LANGSMITH_PROJECT}"
+
+service:
+  pipelines:
+    traces:
+      exporters: [otlphttp/langfuse, otlphttp/phoenix, otlp/tempo, otlphttp/langsmith, debug]

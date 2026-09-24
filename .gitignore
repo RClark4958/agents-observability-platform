@@ -1,0 +1,20 @@
+# secrets and local state
+.env
+.envrc.local
+*.local.yaml
+
+# python (global gitignore covers the rest)
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+
+# data and model artifacts
+data/raw/
+data/traces/
+*.sqlite
+*.db
+
+# docs build / scratch
+docs/_build/
+scratch/

@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+      - name: Validate collector config
+        run: |
+          docker run --rm -v "$PWD/otel:/etc/otelcol:ro" \
+            -e LANGFUSE_OTEL_AUTH=x -e LANGSMITH_API_KEY=x -e LANGSMITH_PROJECT=x \
+            otel/opentelemetry-collector-contrib:latest \
+            validate --config=/etc/otelcol/base.yaml --config=/etc/otelcol/langsmith.yaml

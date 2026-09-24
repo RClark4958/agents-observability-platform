@@ -1,0 +1,70 @@
+# OTel Collector: receive once, redact, fan out to every local backend.
+# Merged with a second file at start (noop.yaml or langsmith.yaml).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  # PHI redaction lands here in a later phase (transform/redaction processors).
+  # Kept as an explicit no-op so the pipeline shape does not change when it does.
+  attributes/redact-placeholder:
+    actions:
+      - key: payerbench.redaction
+        value: "none"
+        action: upsert
+
+  batch:
+    timeout: 2s
+    send_batch_size: 512
+
+exporters:
+  # Langfuse: OTLP/HTTP with basic auth (base64 of "pk:sk"), see LANGFUSE_OTEL_AUTH in .env
+  otlphttp/langfuse:
+    endpoint: http://langfuse-web:3000/api/public/otel
+    headers:
+      Authorization: "Basic ${env:LANGFUSE_OTEL_AUTH}"
+
+  # Arize Phoenix: OTLP/HTTP on its UI port
+  otlphttp/phoenix:
+    endpoint: http://phoenix:6006
+    tls:
+      insecure: true
+
+  # Grafana Tempo via the otel-lgtm image's own collector
+  otlp/tempo:
+    endpoint: otel-lgtm:4317
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redact-placeholder, batch]
+      exporters: [otlphttp/langfuse, otlphttp/phoenix, otlp/tempo, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]

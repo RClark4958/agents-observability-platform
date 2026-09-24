@@ -1,0 +1,2 @@
+# Intentionally empty overlay. Selected when OTEL_EXTRA_CONFIG is unset.
+{}

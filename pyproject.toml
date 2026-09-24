@@ -1,0 +1,46 @@
+[project]
+name = "payerbench"
+version = "0.1.0"
+description = "Synthetic health-plan member-services agent instrumented with OpenTelemetry GenAI semantic conventions"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Rick Clark" }]
+dependencies = [
+    "langgraph>=1.0",
+    "langchain-core>=1.0",
+    "langchain-openai>=1.0",
+    "pydantic>=2.7",
+    "opentelemetry-sdk>=1.30",
+    "opentelemetry-exporter-otlp-proto-http>=1.30",
+    "openinference-instrumentation-langchain>=0.1.40",
+    "faker>=30",
+    "typer>=0.12",
+    "rich>=13",
+]
+
+[project.scripts]
+payerbench = "payerbench.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/payerbench"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
