@@ -29,19 +29,19 @@ processors:
 
 exporters:
   # Langfuse: OTLP/HTTP with basic auth (base64 of "pk:sk"), see LANGFUSE_OTEL_AUTH in .env
-  otlphttp/langfuse:
+  otlp_http/langfuse:
     endpoint: http://langfuse-web:3000/api/public/otel
     headers:
       Authorization: "Basic ${env:LANGFUSE_OTEL_AUTH}"
 
   # Arize Phoenix: OTLP/HTTP on its UI port
-  otlphttp/phoenix:
+  otlp_http/phoenix:
     endpoint: http://phoenix:6006
     tls:
       insecure: true
 
   # Grafana Tempo via the otel-lgtm image's own collector
-  otlp/tempo:
+  otlp_grpc/tempo:
     endpoint: otel-lgtm:4317
     tls:
       insecure: true
@@ -59,12 +59,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, attributes/redact-placeholder, batch]
-      exporters: [otlphttp/langfuse, otlphttp/phoenix, otlp/tempo, debug]
+      exporters: [otlp_http/langfuse, otlp_http/phoenix, otlp_grpc/tempo, debug]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/tempo]
+      exporters: [otlp_grpc/tempo]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/tempo]
+      exporters: [otlp_grpc/tempo]

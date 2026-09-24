@@ -21,8 +21,8 @@ identical stream of data, and to keep the agent code free of any vendor SDK.
 
 Phase 1: stack and scaffold. See [ROADMAP.md](ROADMAP.md) for the full plan and why this exists.
 
-- [ ] Compose stack boots (Langfuse, Phoenix, otel-lgtm, collector)
-- [ ] Smoke span arrives in all local backends
+- [x] Compose stack boots (Langfuse, Phoenix, otel-lgtm, collector)
+- [x] Smoke span arrives in all local backends (`just verify`)
 - [ ] PayerBench agent v0 with tools and synthetic data
 - [ ] LangGraph instrumented with GenAI semconv
 - [ ] PHI redaction in the collector
@@ -55,8 +55,11 @@ just up                         # docker compose up -d
 just smoke                      # sends one test trace through the collector
 ```
 
-Then open Langfuse (login with the init user from `.env`), Phoenix and Grafana and look for the
-`payerbench.smoke` span in each.
+Then `just verify` asks each backend what it received, or open Langfuse (login with the init user
+from `.env`), Phoenix and Grafana (admin/admin) and look for the `invoke_agent payerbench` trace.
+
+Note: Langfuse v4 runs in events-only mode. The legacy `/api/public/traces` endpoint is disabled;
+use `/api/public/v2/observations`. Spans land in the `events_core` / `events_full` ClickHouse tables.
 
 To also ship to LangSmith, set `LANGSMITH_API_KEY` in `~/.config/secrets/ai.env` and run
 `just up-cloud`.
