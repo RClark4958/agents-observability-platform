@@ -56,9 +56,24 @@ check:
     docker run --rm -v "$PWD/otel:/etc/otelcol:ro" otel/opentelemetry-collector-contrib:latest validate --config=/etc/otelcol/base.yaml
 
 # Serve the local model with mlx_lm (OpenAI-compatible on :8080, Gemma 4 tool-call parser built in)
-serve model=env("PAYERBENCH_MODEL", "mlx-community/gemma-4-31b-it-8bit"):
-    HF_HOME=$HOME/models/hf mlx_lm.server --model {{model}} --host 127.0.0.1 --port 8080 \
+serve model=env("PAYERBENCH_MODEL", "mlx-community/gemma-4-31b-it-8bit") port="8080":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if pid=$(lsof -ti tcp:{{port}} -sTCP:LISTEN 2>/dev/null); then
+      echo "port {{port}} is already in use by pid $pid:"; ps -o command= -p "$pid" | cut -c1-120
+      echo "stop it with: just serve-stop"; exit 1
+    fi
+    export HF_HOME="$HOME/models/hf"
+    exec mlx_lm.server --model {{model}} --host 127.0.0.1 --port {{port}} \
       --chat-template-args '{"enable_thinking": false}'
+
+# Stop any running mlx_lm.server
+serve-stop:
+    -pkill -f mlx_lm.server && echo "stopped" || echo "nothing running"
+
+# Is the model server up, and which models does it know about
+serve-status:
+    @curl -sf http://127.0.0.1:8080/v1/models | python3 -c 'import sys,json; [print(m["id"]) for m in json.load(sys.stdin)["data"]]' || echo "no server on :8080"
 
 # One question to the agent (traced)
 chat message:
