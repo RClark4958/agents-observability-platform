@@ -60,9 +60,35 @@ def tempo() -> tuple[int, str]:
     return len(traces), f"{len(traces)} traces (TraceQL via Grafana proxy)"
 
 
+def semconv() -> tuple[int, str]:
+    """Count spans that carry the OTel GenAI attributes the collector adds from OpenInference."""
+    import time
+
+    now = int(time.time())
+    auth = base64.b64encode(b"admin:admin").decode()
+    counts = {}
+    for op in ("chat", "execute_tool", "invoke_agent"):
+        q = urllib.parse.quote(
+            f'{{ resource.service.name = "{SERVICE}" && span.gen_ai.operation.name = "{op}" }}'
+        )
+        url = (
+            f"{GRAFANA}/api/datasources/proxy/uid/tempo/api/search"
+            f"?q={q}&limit=200&spss=50&start={now - 86400}&end={now}"
+        )
+        traces = _get(url, headers={"Authorization": f"Basic {auth}"}).get("traces", [])
+        counts[op] = sum(len(t.get("spanSet", {}).get("spans", [])) for t in traces)
+    detail = ", ".join(f"{k}={v}" for k, v in counts.items())
+    return sum(counts.values()), f"spans with gen_ai.operation.name: {detail} (Tempo)"
+
+
 def main() -> int:
     failures = 0
-    for name, fn in (("langfuse", langfuse), ("phoenix", phoenix), ("tempo", tempo)):
+    for name, fn in (
+        ("langfuse", langfuse),
+        ("phoenix", phoenix),
+        ("tempo", tempo),
+        ("semconv", semconv),
+    ):
         try:
             count, detail = fn()
             status = "ok " if count else "EMPTY"

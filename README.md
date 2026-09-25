@@ -25,7 +25,7 @@ Phase 1: stack and scaffold. See [ROADMAP.md](ROADMAP.md) for the full plan and 
 - [x] Smoke span arrives in all local backends (`just verify`)
 - [x] PayerBench agent v0 with tools and synthetic data (`just demo`, local Gemma 4 31B via mlx_lm)
 - [x] LangGraph instrumented via OpenInference (AGENT / CHAIN / GENERATION / TOOL spans)
-- [ ] Map OpenInference attributes to GenAI semconv in the collector (or dual-emit)
+- [x] Collector adds GenAI semconv attributes and span names next to OpenInference (`just verify` reports the counts)
 - [ ] PHI redaction in the collector
 - [ ] LangSmith OTLP export enabled behind a profile
 - [ ] Claude Code telemetry routed into the same collector

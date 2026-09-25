@@ -23,6 +23,88 @@ processors:
         value: "none"
         action: upsert
 
+  # OpenInference -> OpenTelemetry GenAI semantic conventions.
+  # The LangChain instrumentor emits OpenInference attribute names (llm.*, tool.*, input/output.value,
+  # openinference.span.kind). Backends that read the OTel GenAI conventions look for gen_ai.* instead.
+  # Each block below adds the gen_ai.* equivalents next to the originals and renames the span to the
+  # convention's "{operation} {target}" form. Spans that already carry gen_ai.operation.name (for
+  # example the smoke script) are left alone. error_mode: ignore keeps a failed statement from dropping
+  # the span.
+  #
+  # Not mapped here, on purpose: gen_ai.input.messages / gen_ai.output.messages / gen_ai.tool.definitions.
+  # OpenInference flattens those into llm.input_messages.N.message.* keys; rebuilding the convention's
+  # structured JSON from flat keys is not practical in OTTL and both Langfuse and Phoenix already read the
+  # OpenInference keys. See docs/ARCHITECTURE.md.
+  transform/openinference-to-genai:
+    error_mode: ignore
+    trace_statements:
+      # --- LLM call -> chat span
+      - context: span
+        conditions:
+          - span.attributes["openinference.span.kind"] == "LLM" and span.attributes["gen_ai.operation.name"] == nil
+        statements:
+          - set(span.attributes["payerbench.original_name"], span.name)
+          - set(span.attributes["gen_ai.operation.name"], "chat")
+          - set(span.attributes["gen_ai.provider.name"], span.attributes["llm.provider"]) where span.attributes["llm.provider"] != nil
+          - set(span.attributes["gen_ai.provider.name"], span.attributes["llm.system"]) where span.attributes["gen_ai.provider.name"] == nil and span.attributes["llm.system"] != nil
+          - set(span.attributes["gen_ai.request.model"], span.attributes["llm.model_name"]) where span.attributes["llm.model_name"] != nil
+          - set(span.attributes["gen_ai.usage.input_tokens"], Int(span.attributes["llm.token_count.prompt"])) where span.attributes["llm.token_count.prompt"] != nil
+          - set(span.attributes["gen_ai.usage.output_tokens"], Int(span.attributes["llm.token_count.completion"])) where span.attributes["llm.token_count.completion"] != nil
+          - set(span.attributes["gen_ai.usage.cache_read.input_tokens"], Int(span.attributes["llm.token_count.prompt_details.cache_read"])) where span.attributes["llm.token_count.prompt_details.cache_read"] != nil
+          - set(span.attributes["gen_ai.response.finish_reasons"], [span.attributes["llm.finish_reason"]]) where span.attributes["llm.finish_reason"] != nil
+          # LangChain puts sampling parameters in a JSON string under "metadata"
+          - set(span.attributes["gen_ai.request.temperature"], Double(ParseJSON(span.attributes["metadata"])["ls_temperature"])) where span.attributes["metadata"] != nil and IsMatch(span.attributes["metadata"], "\"ls_temperature\"")
+          - set(span.attributes["gen_ai.request.max_tokens"], Int(ParseJSON(span.attributes["metadata"])["ls_max_tokens"])) where span.attributes["metadata"] != nil and IsMatch(span.attributes["metadata"], "\"ls_max_tokens\"")
+          - set(span.name, Concat(["chat", span.attributes["gen_ai.request.model"]], " ")) where span.attributes["gen_ai.request.model"] != nil
+          - set(span.name, "chat") where span.attributes["gen_ai.request.model"] == nil
+          - set(span.kind, SPAN_KIND_CLIENT)
+
+      # --- Tool execution -> execute_tool span
+      - context: span
+        conditions:
+          - span.attributes["openinference.span.kind"] == "TOOL" and span.attributes["gen_ai.operation.name"] == nil
+        statements:
+          - set(span.attributes["payerbench.original_name"], span.name)
+          - set(span.attributes["gen_ai.operation.name"], "execute_tool")
+          - set(span.attributes["gen_ai.tool.type"], "function")
+          - set(span.attributes["gen_ai.tool.name"], span.attributes["tool.name"]) where span.attributes["tool.name"] != nil
+          - set(span.attributes["gen_ai.tool.name"], span.name) where span.attributes["gen_ai.tool.name"] == nil
+          - set(span.attributes["gen_ai.tool.description"], span.attributes["tool.description"]) where span.attributes["tool.description"] != nil
+          - set(span.attributes["gen_ai.tool.call.arguments"], span.attributes["input.value"]) where span.attributes["input.value"] != nil
+          - set(span.attributes["gen_ai.tool.call.result"], span.attributes["output.value"]) where span.attributes["output.value"] != nil
+          - set(span.name, Concat(["execute_tool", span.attributes["gen_ai.tool.name"]], " "))
+          - set(span.kind, SPAN_KIND_INTERNAL)
+
+      # --- Explicit agent spans
+      - context: span
+        conditions:
+          - span.attributes["openinference.span.kind"] == "AGENT" and span.attributes["gen_ai.operation.name"] == nil
+        statements:
+          - set(span.attributes["payerbench.original_name"], span.name)
+          - set(span.attributes["gen_ai.operation.name"], "invoke_agent")
+          - set(span.attributes["gen_ai.agent.name"], span.name) where span.attributes["gen_ai.agent.name"] == nil
+          - set(span.name, Concat(["invoke_agent", span.attributes["gen_ai.agent.name"]], " "))
+
+      # --- LangGraph graph root -> invoke_agent. The compiled graph runs as a CHAIN span whose
+      # metadata says ls_integration=langgraph and has no langgraph_node (node spans do).
+      - context: span
+        conditions:
+          - span.attributes["openinference.span.kind"] == "CHAIN" and span.attributes["gen_ai.operation.name"] == nil and span.attributes["metadata"] != nil and IsMatch(span.attributes["metadata"], "\"ls_integration\":\\s*\"langgraph\"") and not IsMatch(span.attributes["metadata"], "\"langgraph_node\"")
+        statements:
+          - set(span.attributes["payerbench.original_name"], span.name)
+          - set(span.attributes["gen_ai.operation.name"], "invoke_agent")
+          - set(span.attributes["gen_ai.agent.name"], span.name)
+          - set(span.name, Concat(["invoke_agent", span.attributes["gen_ai.agent.name"]], " "))
+
+      # --- LangGraph node spans (model / tools / route). The convention has no "graph step"
+      # operation, so these keep their names; the node is exposed as an attribute for filtering.
+      - context: span
+        conditions:
+          - span.attributes["openinference.span.kind"] == "CHAIN" and span.attributes["metadata"] != nil and IsMatch(span.attributes["metadata"], "\"langgraph_node\"")
+        statements:
+          - set(span.attributes["payerbench.langgraph.node"], ParseJSON(span.attributes["metadata"])["langgraph_node"])
+          - set(span.attributes["payerbench.langgraph.step"], Int(ParseJSON(span.attributes["metadata"])["langgraph_step"]))
+
   batch:
     timeout: 2s
     send_batch_size: 512
@@ -58,7 +140,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, attributes/redact-placeholder, batch]
+      processors: [memory_limiter, attributes/redact-placeholder, transform/openinference-to-genai, batch]
       exporters: [otlp_http/langfuse, otlp_http/phoenix, otlp_grpc/tempo, debug]
     metrics:
       receivers: [otlp]
