@@ -74,6 +74,11 @@ Observed after mapping:
 - Langfuse keeps GENERATION / TOOL / CHAIN typing, model name and usage. Langfuse reports
   `input` as prompt tokens minus cached tokens (e.g. 1473 prompt, 1273 cached -> input 200), while
   Phoenix reports the raw prompt count. Same span, two token accountings.
+- LangSmith (cloud, via the `langsmith.yaml` overlay) auto-creates the project on first receipt and
+  maps spans to run types chain / llm / tool. It reads the model name from LangChain's own
+  `ls_model_name` metadata and rolls token counts up the tree (the root chain run shows the sum of
+  its LLM children). It keeps LangGraph metadata and stamps `OTEL_TRACE_ID` / `OTEL_SPAN_ID` into run
+  metadata, so a run can be cross-referenced to the same trace in the local backends.
 - Tempo makes the added attributes queryable with TraceQL, e.g.
   `{ span.gen_ai.operation.name = "execute_tool" && span.gen_ai.tool.name = "get_claim" }`.
 - OTTL gotcha: indexing a missing key in a parsed JSON map (`ParseJSON(x)["k"] == nil`) raises
@@ -111,6 +116,22 @@ lines of Python are unavoidable; it is still standard OpenTelemetry, not a vendo
 it is not the only layer: the collector layer also protects telemetry from sources we do not
 control (Claude Code, the model gateway) and is enforced by platform config rather than by each
 application remembering to install a processor.
+
+**Escaping lesson.** The first version of the field rules matched `"name": "x"` and passed the
+probe, yet the member name reached LangSmith six times. LangChain wraps tool results as a JSON
+string inside the span's `output.value` JSON, so the field arrives as `\"name\": \"x\"` and a rule
+written for bare quotes never sees it. The rules now treat every quote as an optional backslash plus
+a quote and re-emit whatever they matched, so the enclosing document stays valid. Lesson for the
+write-up: test redaction against the wire form of the data, not against the tool's own output, and
+probe every backend, since it was the cloud one that exposed the gap.
+
+**Group-reference lesson.** OTTL replacements use Go's `regexp.Expand` syntax, where `$1name` is
+read as a group *named* "1name" (which does not exist and expands to nothing). A replacement that
+concatenates a group with literal text must brace the group: `${1}name`, written `$${1}name` inside
+collector config because `$` is also the config's environment-variable marker. The first version
+silently deleted the `name` key while redacting its value, leaving invalid JSON in every backend;
+the probe did not catch it because the probe looks for leaks, not for damage. Verification now also
+parses a redacted tool result back into JSON.
 
 **Verification.** `just verify --phi-since <epoch>` searches Tempo for spans newer than the given time
 whose content attributes contain known synthetic identifiers (a member ID, a member name, a service
