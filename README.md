@@ -26,7 +26,8 @@ Phase 1: stack and scaffold. See [ROADMAP.md](ROADMAP.md) for the full plan and 
 - [x] PayerBench agent v0 with tools and synthetic data (`just demo`, local Gemma 4 31B via mlx_lm)
 - [x] LangGraph instrumented via OpenInference (AGENT / CHAIN / GENERATION / TOOL spans)
 - [x] Collector adds GenAI semconv attributes and span names next to OpenInference (`just verify` reports the counts)
-- [ ] PHI redaction in the collector
+- [x] PHI redaction in the collector, layer 1: pattern rules (`just verify --phi-since <epoch>` probes for leaks)
+- [ ] PHI redaction, layer 2: Presidio span processor in the agent for free-text names
 - [ ] LangSmith OTLP export enabled behind a profile
 - [ ] Claude Code telemetry routed into the same collector
 - [ ] Write-up: same trace, four backends

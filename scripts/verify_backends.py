@@ -81,7 +81,66 @@ def semconv() -> tuple[int, str]:
     return sum(counts.values()), f"spans with gen_ai.operation.name: {detail} (Tempo)"
 
 
+# Values that exist in the synthetic world and must never reach a backend once redaction is on.
+# Member 000003 drives the denied-claim scenario; the date is a claim service date from it.
+PHI_PROBES = ("M-SYNTH-000003", "Daniel Ramos", "2026-01-31", "January 31, 2026")
+
+
+def phi_leaks(since_epoch: int) -> tuple[int, str]:
+    """Search Tempo for spans newer than `since_epoch` whose attributes contain a known
+    synthetic identifier. Returns the number of leaking spans; 0 means redaction held."""
+    import time
+
+    now = int(time.time())
+    auth = base64.b64encode(b"admin:admin").decode()
+    leaks: dict[str, int] = {}
+    for probe in PHI_PROBES:
+        # TraceQL regex match across the attributes that carry content.
+        conds = " || ".join(
+            f'span.{k} =~ ".*{probe}.*"'
+            for k in (
+                "input.value",
+                "output.value",
+                "gen_ai.tool.call.result",
+                "gen_ai.tool.call.arguments",
+                "llm.input_messages.0.message.content",
+            )
+        )
+        q = urllib.parse.quote(f'{{ resource.service.name = "{SERVICE}" && ({conds}) }}')
+        url = (
+            f"{GRAFANA}/api/datasources/proxy/uid/tempo/api/search"
+            f"?q={q}&limit=200&spss=50&start={since_epoch}&end={now}"
+        )
+        traces = _get(url, headers={"Authorization": f"Basic {auth}"}).get("traces", [])
+        leaks[probe] = sum(len(t.get("spanSet", {}).get("spans", [])) for t in traces)
+    # A window with no spans at all would make "0 leaks" meaningless; report that as a failure.
+    q = urllib.parse.quote(f'{{ resource.service.name = "{SERVICE}" }}')
+    url = (
+        f"{GRAFANA}/api/datasources/proxy/uid/tempo/api/search"
+        f"?q={q}&limit=200&spss=50&start={since_epoch}&end={now}"
+    )
+    examined = sum(
+        len(t.get("spanSet", {}).get("spans", []))
+        for t in _get(url, headers={"Authorization": f"Basic {auth}"}).get("traces", [])
+    )
+    detail = ", ".join(f'"{k}"={v}' for k, v in leaks.items())
+    if examined == 0:
+        return -1, f"no payerbench spans in Tempo since {since_epoch}; nothing examined"
+    return sum(leaks.values()), f"{examined} spans examined, probe hits: {detail}"
+
+
 def main() -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--phi-since",
+        type=int,
+        default=None,
+        help="epoch seconds; also run the PHI leak check on spans newer than this",
+    )
+    args = ap.parse_args()
+
     failures = 0
     for name, fn in (
         ("langfuse", langfuse),
@@ -97,6 +156,16 @@ def main() -> int:
             status, detail = "ERR ", f"{type(exc).__name__}: {exc}"
             failures += 1
         print(f"{status}  {name:<9} {detail}")
+
+    if args.phi_since is not None:
+        try:
+            count, detail = phi_leaks(args.phi_since)
+            status = "ok " if count == 0 else ("EMPTY" if count < 0 else "LEAK")
+            failures += count != 0
+        except Exception as exc:  # noqa: BLE001
+            status, detail = "ERR ", f"{type(exc).__name__}: {exc}"
+            failures += 1
+        print(f"{status}  {'phi':<9} {detail}")
     return 1 if failures else 0
 
 

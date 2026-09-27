@@ -93,10 +93,11 @@ demo *args:
 smoke:
     uv run python scripts/smoke_trace.py
 
-# Ask each local backend how many payerbench traces it holds (exit 1 if any is empty)
-verify:
+# Ask each local backend how many payerbench traces it holds (exit 1 if any is empty).
+# Extra args pass through, e.g. `just verify --phi-since 1790000000` to also hunt for leaked PHI.
+verify *args:
     @docker compose logs otel-collector --no-log-prefix 2>&1 | grep -oE '"spans": [0-9]+' | awk -F': ' '{s+=$2} END {print "      collector " s+0 " spans received"}'
-    uv run python scripts/verify_backends.py
+    uv run python scripts/verify_backends.py {{args}}
 
 test:
     uv run pytest -q

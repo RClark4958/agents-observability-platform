@@ -80,6 +80,43 @@ Observed after mapping:
   "key not found in map" and the whole condition fails. Test key presence with `IsMatch` on the JSON
   string instead.
 
+## PHI redaction
+
+Two layers, by design. Neither is a redaction engine we wrote.
+
+**Layer 1, in the collector (`transform/phi-redaction`, config only).** Regex rewrites applied to every
+string attribute of every span, after the semconv transform and before any exporter. It covers the
+HIPAA Safe Harbor identifiers that have a recognisable shape in this agent's traffic:
+
+| Identifier | Rule | Result |
+|---|---|---|
+| Member ID `M-SYNTH-nnnnnn` | SHA-256 pseudonym | `MEMBER-<hash>`; the same member hashes the same everywhere, so traces stay correlatable |
+| `"name"`, `"first_name"`, `"last_name"` JSON fields | field-aware replace | `"name": "[REDACTED_NAME]"` |
+| `"address"`, `"phone"` JSON fields | field-aware replace | `[REDACTED_ADDRESS]`, `[REDACTED_PHONE]` |
+| Any ISO date | keep year only | `2026-01-31` -> `2026-XX-XX` (Safe Harbor keeps only the year of dates tied to a person) |
+| SSN, email, phone, US street address in free text | shape regex | `[REDACTED_*]` |
+
+Every span gets `payerbench.redaction = regex-v1` so a reader can tell which rule set was in force.
+
+Trade-off accepted: dates are reduced to year everywhere, including claim service dates and
+prior-auth decision dates, which hurts debugging. That is the Safe Harbor rule; a production
+deployment might instead classify dates per field. Claim IDs, CPT codes, provider names and plan
+names are not patient identifiers and pass through.
+
+**Layer 2, in the agent process (planned).** Names spoken in free text ("I'm Alexis Ayers") have no
+shape a regex can catch. Microsoft Presidio (open-source PII/PHI recogniser: NER models plus
+pattern recognisers) runs as an OpenTelemetry SpanProcessor inside the agent's SDK pipeline, so
+free-text names are anonymised before the span leaves the process. This is the one place a few
+lines of Python are unavoidable; it is still standard OpenTelemetry, not a vendor SDK. The reason
+it is not the only layer: the collector layer also protects telemetry from sources we do not
+control (Claude Code, the model gateway) and is enforced by platform config rather than by each
+application remembering to install a processor.
+
+**Verification.** `just verify --phi-since <epoch>` searches Tempo for spans newer than the given time
+whose content attributes contain known synthetic identifiers (a member ID, a member name, a service
+date). Zero hits means layer 1 held for everything Tempo received; since all exporters receive the
+same processed span, the same holds for Langfuse, Phoenix and LangSmith.
+
 ## Open questions to answer with data
 
 1. Which backends preserve `gen_ai.input.messages` / `gen_ai.output.messages` as structured
