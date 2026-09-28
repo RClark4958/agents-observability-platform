@@ -19,6 +19,16 @@ dependencies = [
     "rich>=13",
 ]
 
+[project.optional-dependencies]
+# PHI redaction layer 2: Presidio + the spaCy large English model (~600 MB). Optional so CI and
+# lightweight installs stay small; `uv sync --extra redact` enables it. PAYERBENCH_PRESIDIO=auto
+# turns the layer on whenever these are importable.
+redact = [
+    "presidio-analyzer>=2.2.360",
+    "presidio-anonymizer>=2.2.360",
+    "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl",
+]
+
 [project.scripts]
 payerbench = "payerbench.cli:app"
 
@@ -31,6 +41,10 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+# The spaCy model in the `redact` extra is a direct wheel URL (it is not on PyPI).
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/payerbench"]

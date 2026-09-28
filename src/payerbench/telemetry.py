@@ -12,7 +12,7 @@ from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
 
 _configured = False
 
@@ -32,7 +32,14 @@ def configure(service_name: str | None = None) -> TracerProvider:
     )
     provider = TracerProvider(resource=resource)
     # Endpoint and protocol come from OTEL_EXPORTER_OTLP_* env vars.
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    exporter: SpanExporter = OTLPSpanExporter()
+    # PHI redaction layer 2 (entity recognition) sits between the SDK and the wire, so spans leave
+    # this process already redacted. The collector's regex layer runs after it. See redaction.py.
+    from payerbench import redaction
+
+    if redaction.presidio_enabled():
+        exporter = redaction.RedactingSpanExporter(exporter, redaction.make_presidio_redactor())
+    provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
     _configured = True
     return provider

@@ -108,14 +108,39 @@ prior-auth decision dates, which hurts debugging. That is the Safe Harbor rule; 
 deployment might instead classify dates per field. Claim IDs, CPT codes, provider names and plan
 names are not patient identifiers and pass through.
 
-**Layer 2, in the agent process (planned).** Names spoken in free text ("I'm Alexis Ayers") have no
-shape a regex can catch. Microsoft Presidio (open-source PII/PHI recogniser: NER models plus
-pattern recognisers) runs as an OpenTelemetry SpanProcessor inside the agent's SDK pipeline, so
-free-text names are anonymised before the span leaves the process. This is the one place a few
-lines of Python are unavoidable; it is still standard OpenTelemetry, not a vendor SDK. The reason
-it is not the only layer: the collector layer also protects telemetry from sources we do not
-control (Claude Code, the model gateway) and is enforced by platform config rather than by each
-application remembering to install a processor.
+**Layer 2, in the agent process (`src/payerbench/redaction.py`).** Names spoken in free text ("I'm
+Alexis Ayers") have no shape a regex can catch. Microsoft Presidio (open-source PII/PHI recogniser:
+a spaCy named-entity model plus pattern recognisers) runs inside the agent's OpenTelemetry SDK
+pipeline as a wrapper around the OTLP exporter. Finished spans have frozen attributes, so the
+wrapper builds a copy of each span with redacted attributes and hands the copy to the real exporter.
+Spans therefore leave the process already redacted; the collector layer runs second and sees, for
+example, `"name": "[REDACTED_PERSON]"` rather than the name.
+
+- Entities: `PERSON`, `US_SSN`, `EMAIL_ADDRESS`, `PHONE_NUMBER`. Dates are left to the collector's
+  year-only rule. `LOCATION` is skipped because Safe Harbor permits state names and the recogniser
+  fires on them constantly.
+- Scanned: every string attribute except model identifiers, span typing, tool schemas, LangGraph
+  metadata and this project's own markers. Those never carry member text, and skipping them avoids
+  false positives on tool descriptions.
+- Fail closed: if the recogniser throws, the attribute is exported as `[REDACTION_ERROR]`, never raw.
+- Markers: `payerbench.redaction.presidio = v1` and `payerbench.redaction.presidio.entities = N`.
+- Cost: spaCy's large English model on CPU, roughly tens of milliseconds per attribute, on the
+  export thread, so the agent's latency is unaffected. The model is ~600 MB and optional
+  (`uv sync --extra redact`); `PAYERBENCH_PRESIDIO=auto` turns the layer on when it is installed.
+- Known over-redaction: provider names ("Dr. John Hill") are people too, so they become
+  `[REDACTED_PERSON]` even though provider identity is not patient PHI.
+- Known misses (measured 2026-09-28, spaCy en_core_web_lg): a bare first name opening a
+  sentence ("Alexis, yes: you are covered") is not recognised as a person; Faker's
+  extension-style phone numbers ("001-555-123-4567x123") are not recognised as phone numbers in
+  prose, though the collector's `"phone"` field rule catches them in tool results. Full names in
+  prose and in JSON fields are caught. Measured cost: engine load 0.8 s once, then 4–25 ms per
+  attribute on the export thread.
+
+This is the one place a few lines of Python are unavoidable; it is still standard OpenTelemetry,
+not a vendor SDK, and the redactor itself is Presidio, not ours. The reason it is not the only
+layer: the collector layer also protects telemetry from sources we do not control (Claude Code, the
+model gateway) and is enforced by platform config rather than by each application remembering to
+install a processor.
 
 **Escaping lesson.** The first version of the field rules matched `"name": "x"` and passed the
 probe, yet the member name reached LangSmith six times. LangChain wraps tool results as a JSON
@@ -124,6 +149,13 @@ written for bare quotes never sees it. The rules now treat every quote as an opt
 a quote and re-emit whatever they matched, so the enclosing document stays valid. Lesson for the
 write-up: test redaction against the wire form of the data, not against the tool's own output, and
 probe every backend, since it was the cloud one that exposed the gap.
+
+**Entity-boundary lesson (layer 2).** Running the recogniser over a raw serialisation broke JSON
+the same way the regex layer had: the entity span for `Alexis Ayers\"` swallowed the backslash, the
+quote became bare, and the downstream field rule faithfully re-emitted the bare quote. The shape
+check caught it. The layer now parses any value that is JSON, recurses into string leaves that are
+themselves JSON, redacts only leaf strings, and re-serialises. Same lesson as before from a
+different direction: redact the data, not its serialisation.
 
 **Group-reference lesson.** OTTL replacements use Go's `regexp.Expand` syntax, where `$1name` is
 read as a group *named* "1name" (which does not exist and expands to nothing). A replacement that
