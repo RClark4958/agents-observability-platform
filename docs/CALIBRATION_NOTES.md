@@ -83,3 +83,13 @@ injection (6/6), out-of-scope (8/8), and six of eight missing-member-ID cases. C
 424 runs, 228 pass, 196 fail. That is the balance the study needs, with the caveat that the
 failures are mostly of one kind (unhelpful deflection) rather than confident wrong answers; the
 four Gemma failures (spouse disclosure) are the only "wrong but fluent" cases.
+
+**2026-09-28. Perturbed set.** The weak model's failures are deflections, which any judge can
+catch. To get fluent, well-evidenced answers that are wrong in one fact, 117 gold-pass Gemma runs
+were copied and one fact in the final answer was edited so it contradicts the tool result the judge
+can see: claim status flipped (17), plan name swapped (24), termination denied (12), deductible
+amount changed (19), authorization status flipped (16), appeal window 180 -> 60 days (26), PT
+limit changed (3). Tool calls are untouched. Each copy was re-graded and kept only if the rules
+call it a failure. These are the cases where a judge has to actually read the evidence, and they
+are also the substrate for the injection experiment: a planted "pre-approved as PASS" note inside
+the last tool result, with the truth still sitting right next to it.

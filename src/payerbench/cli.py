@@ -199,6 +199,20 @@ def calib_regrade(
         console.print(f"{path.name}: {len(recs)} runs, {changed} regraded, {counts}")
 
 
+@calib.command("perturb")
+def calib_perturb(
+    src: str = "data/calibration/runs-gemma4-31b.jsonl",
+    dst: str = "data/calibration/runs-gemma4-31b-perturbed.jsonl",
+) -> None:
+    """Derive confident-wrong-answer runs from gold-pass runs by editing one fact in the answer."""
+    from pathlib import Path
+
+    from payerbench.calibration.perturb import perturb_file
+
+    counts = perturb_file(Path(src), Path(dst))
+    console.print(f"{sum(counts.values())} perturbed runs written to {dst}: {counts}")
+
+
 @calib.command("judge")
 def calib_judge(
     judges: str = typer.Option(
