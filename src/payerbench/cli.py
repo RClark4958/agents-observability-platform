@@ -168,5 +168,79 @@ def calib_collect(
     console.print(counts)
 
 
+@calib.command("judge")
+def calib_judge(
+    judges: str = typer.Option(
+        "jev,claude,gpt,local",
+        help="Comma-separated: jev,kev,claude,claude-opus,gpt,gpt-mini,local",
+    ),
+    runs: str = typer.Option(
+        "data/calibration/runs-gemma4-31b.jsonl,data/calibration/runs-qwen3-0.6b.jsonl"
+    ),
+    out: str = "data/calibration/verdicts.jsonl",
+    reps: int = 3,
+    variant: str = typer.Option("baseline", help="baseline | no_tool_output | injected"),
+    limit: int | None = typer.Option(None, help="Only the first N runs per file"),
+    only_fail: bool = typer.Option(
+        False, help="Only gold-fail runs (for the injection experiment)"
+    ),
+    workers: int = typer.Option(
+        6, help="Thread pool size for API judges; local judges run serially"
+    ),
+) -> None:
+    """Run the judge panel over collected runs; resumable."""
+    from pathlib import Path
+
+    from payerbench.calibration.collect import effective_label, load_runs
+    from payerbench.calibration.judges import JUDGE_FACTORIES
+    from payerbench.calibration.runner import run
+
+    records = []
+    for p in runs.split(","):
+        rs = load_runs(Path(p))
+        for r in rs:
+            r["id"] = f"{r['id']}@{r.get('model', '?').split('/')[-1]}"
+        if only_fail:
+            rs = [r for r in rs if effective_label(r) == "fail"]
+        records += rs[:limit] if limit else rs
+    console.print(f"{len(records)} runs, variant={variant}, reps={reps}")
+    for name in judges.split(","):
+        judge = JUDGE_FACTORIES[name]()
+        w = 1 if name in ("kev", "local") else workers
+
+        def progress(i, n, v, judge=judge):
+            if v.error:
+                console.print(f"  [{i}/{n}] [magenta]ERR[/magenta] {v.case_id} {v.error}")
+            elif i % 25 == 0 or i == n:
+                console.print(
+                    f"  [{i}/{n}] {judge.name} last p={v.pass_prob:.2f} {v.latency_s:.2f}s"
+                )
+
+        console.rule(judge.name)
+        written = run(
+            records, judge, reps, Path(out), variant=variant, workers=w, progress=progress
+        )
+        console.print(f"{judge.name}: {written} new verdicts")
+
+
+@calib.command("report")
+def calib_report(
+    verdicts: str = "data/calibration/verdicts.jsonl",
+    runs: str = "data/calibration/runs-gemma4-31b.jsonl,data/calibration/runs-qwen3-0.6b.jsonl",
+    out_json: str | None = "data/calibration/report.json",
+) -> None:
+    """Print the judge comparison table and the injection experiment."""
+    from pathlib import Path
+
+    from payerbench.calibration.report import report
+
+    text = report(
+        [Path(p) for p in verdicts.split(",")],
+        [Path(p) for p in runs.split(",")],
+        Path(out_json) if out_json else None,
+    )
+    console.print(text, markup=False)
+
+
 if __name__ == "__main__":
     app()
