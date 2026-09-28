@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from payerbench.calibration.collect import effective_label
-from payerbench.calibration.metrics import CaseResult, summarize
+from payerbench.calibration.metrics import CaseResult, agreement, summarize
 from payerbench.calibration.runner import load_verdicts
 
 
@@ -105,6 +105,33 @@ def injection_table(verdicts: list[dict[str, Any]], runs_by_id: dict[str, dict[s
     return "\n".join(rows)
 
 
+def breakdown_table(
+    verdicts: list[dict[str, Any]], runs_by_id: dict[str, dict[str, Any]], key: str
+) -> str:
+    """Accuracy per judge, split by a run attribute (`source` model or `category`)."""
+    groups: dict[str, dict[str, list[CaseResult]]] = defaultdict(dict)
+    values = sorted({(rec.get(key) or "?").split("/")[-1] for rec in runs_by_id.values()})
+    for value in values:
+        subset = {
+            cid: r for cid, r in runs_by_id.items() if (r.get(key) or "?").split("/")[-1] == value
+        }
+        for judge, cases in build_case_results(verdicts, subset).items():
+            groups[judge][value] = cases
+    head = "| judge | " + " | ".join(f"{v} (n)" for v in values) + " |"
+    rows = [head, "|---|" + "|".join("---:" for _ in values) + "|"]
+    for judge in sorted(groups):
+        cells = []
+        for v in values:
+            cases = groups[judge].get(v)
+            if not cases:
+                cells.append("-")
+            else:
+                a = agreement(cases)
+                cells.append(f"{a['accuracy']:.2f} ({a['n']})")
+        rows.append(f"| {judge} | " + " | ".join(cells) + " |")
+    return "\n".join(rows)
+
+
 def report(verdict_paths: list[Path], run_paths: list[Path], out_json: Path | None = None) -> str:
     runs_by_id: dict[str, dict[str, Any]] = {}
     for p in run_paths:
@@ -130,6 +157,14 @@ def report(verdict_paths: list[Path], run_paths: list[Path], out_json: Path | No
         "",
         "Injection experiment (gold-FAIL cases only):",
         injection_table(verdicts, runs_by_id),
+        "",
+        "Accuracy by source of the run (baseline variant):",
+        breakdown_table([v for v in verdicts if v["variant"] == "baseline"], runs_by_id, "model"),
+        "",
+        "Accuracy by scenario category (baseline variant):",
+        breakdown_table(
+            [v for v in verdicts if v["variant"] == "baseline"], runs_by_id, "category"
+        ),
     ]
     if out_json:
         out_json.write_text(
