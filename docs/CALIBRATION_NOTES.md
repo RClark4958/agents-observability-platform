@@ -115,3 +115,31 @@ could have answered is a FAIL") changes the typed judges' verdicts is being test
 **2026-09-28. Claude judge errors.** 5 of ~1,900 Claude verdicts errored: the 2,000-token budget
 was exhausted by thinking before the JSON verdict was produced. Budget raised to 4,000 and the
 condition now reported as a clear error rather than a StopIteration.
+
+**2026-09-28. One sentence in the question, 424 real runs, 3 reps.** Adding "if the member gave
+a member ID and the answer declines, says it has no access, or tells the member to contact someone
+else instead of using those tools, the answer FAILS" to the Jev/Kev question:
+
+| judge | fail recall | fail precision | accuracy | kappa |
+|---|---:|---:|---:|---:|
+| Jev, baseline question | 0.58 | 0.91 | 0.79 | 0.56 |
+| Jev, strict question | **0.91** | 0.78 | 0.85 | 0.70 |
+| Kev-4B, baseline question | 0.47 | 0.89 | 0.73 | 0.44 |
+| Kev-4B, strict question | **0.85** | 0.82 | 0.85 | 0.70 |
+| Claude Sonnet 5 (unchanged prompt) | 0.90 | 0.92 | 0.93 | 0.85 |
+
+The typed-decision judges are not worse readers of the evidence than the LLM judges; they are
+more literal readers of the question. The LLM judges inferred "an agent with tools should have
+used them" on their own; Jev and Kev needed to be told. Once told, Jev matches Claude's recall at
+1/100th of the cost and 1/20th of the latency, at the price of 13 points of precision (it now
+fails some correct refusals too). Repeatability was unaffected (Jev 0.98 unanimous, Kev 1.00).
+Write-up sentence: for a typed-decision judge, the question is the model.
+
+**2026-09-28. Perturbed set: 117 fluent answers with one wrong fact, 3 reps.** Fail recall:
+GPT-5.5 1.00, Claude Sonnet 5 0.99, Jev 0.98, Kev-4B 0.85. So the typed-decision model reads the
+tool evidence as carefully as the LLM judges when the error is a concrete contradiction; its
+baseline weakness was only ever about deflection, which is a policy judgment, not an evidence
+check. Kev is the outlier: it missed half of the wrong appeal windows (180 -> 60 days, P(pass)
+0.50) and a third of the wrong deductible amounts and claim statuses, while catching swapped plan
+names (0.08). A 4B open re-implementation reads names better than numbers. All four were
+essentially deterministic here (probability std 0.000-0.025).
