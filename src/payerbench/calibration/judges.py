@@ -175,23 +175,48 @@ SYSTEMONE_QUESTIONS = {
 }
 
 
+# Rubric-wording experiment: the same criteria plus one sentence making explicit that the agent
+# has tools and that a generic deflection when a tool could have answered is a failure. Whether
+# a typed-decision judge changes its verdicts on that one sentence is itself a result.
+STRICT_SUFFIX = (
+    " Note: the agent has tools that can look up eligibility, claims, prior authorizations, the "
+    "plan document and providers. If the member gave a member ID and the answer declines, says it "
+    "has no access, or tells the member to contact someone else instead of using those tools, "
+    "the answer FAILS."
+)
+SYSTEMONE_QUESTIONS_STRICT = {
+    **SYSTEMONE_QUESTIONS,
+    "passes": {
+        "type": "noul",
+        "instructions": PREAMBLE + " " + CRITERIA + STRICT_SUFFIX + " Does the answer PASS?",
+    },
+}
+
+
 class SystemOneJudge(Judge):
     """TypeSafe's /v1/systemone request shape, which OpenRouter's Decisions API and Kev both accept."""
 
     def __init__(
-        self, name: str, endpoint: str, model: str, api_key: str | None, timeout: int = 60
+        self,
+        name: str,
+        endpoint: str,
+        model: str,
+        api_key: str | None,
+        timeout: int = 60,
+        questions: dict[str, Any] | None = None,
     ):
         self.name = name
         self.endpoint = endpoint
         self.model = model
         self.api_key = api_key
         self.timeout = timeout
+        self.questions = questions or SYSTEMONE_QUESTIONS
 
     def _decide(self, packet: str) -> tuple[float, float | None, float | None, dict[str, Any]]:
         import urllib.request
 
         body = json.dumps(
-            {"model": self.model, "state": packet, "questions": SYSTEMONE_QUESTIONS}
+            {"model": self.model, "state": packet, "questions": self.questions}
         ).encode()
         headers = {"Content-Type": "application/json"}
         if self.api_key:
@@ -209,6 +234,20 @@ class SystemOneJudge(Judge):
         raw["usage"] = data.get("usage")
         # A yes/no answer has no separate confidence; use distance from 0.5 as the margin.
         return prob, abs(prob - 0.5) * 2, cost, raw
+
+
+def jev_strict_judge() -> SystemOneJudge:
+    j = jev_judge()
+    j.name = "jev-1.13@openrouter[strict]"
+    j.questions = SYSTEMONE_QUESTIONS_STRICT
+    return j
+
+
+def kev_strict_judge() -> SystemOneJudge:
+    j = kev_judge()
+    j.name = "kev-4b@local[strict]"
+    j.questions = SYSTEMONE_QUESTIONS_STRICT
+    return j
 
 
 def jev_judge() -> SystemOneJudge:
@@ -298,14 +337,18 @@ class AnthropicJudge(Judge):
     def _decide(self, packet: str) -> tuple[float, float | None, float | None, dict[str, Any]]:
         response = self.client.messages.create(
             model=self.model,
-            max_tokens=2000,
+            max_tokens=4000,
             system=LLM_SYSTEM,
             messages=[{"role": "user", "content": packet}],
             output_config={"format": {"type": "json_schema", "schema": LLM_SCHEMA}},
         )
         if response.stop_reason == "refusal":
             raise RuntimeError("model refused")
-        text = next(b.text for b in response.content if b.type == "text")
+        if response.stop_reason == "max_tokens":
+            raise RuntimeError("max_tokens reached before the JSON verdict")
+        text = next((b.text for b in response.content if b.type == "text"), None)
+        if text is None:
+            raise RuntimeError(f"no text block (stop_reason={response.stop_reason})")
         data = _parse_llm_json(text)
         prob = _prob(data)
         u = response.usage
@@ -394,6 +437,8 @@ def local_llm_judge(model: str | None = None) -> OpenAICompatibleJudge:
 JUDGE_FACTORIES = {
     "jev": jev_judge,
     "kev": kev_judge,
+    "jev-strict": jev_strict_judge,
+    "kev-strict": kev_strict_judge,
     "claude": lambda: AnthropicJudge("claude-sonnet-5"),
     "claude-opus": lambda: AnthropicJudge("claude-opus-5"),
     "gpt": lambda: openai_judge("gpt-5.5"),

@@ -621,6 +621,12 @@ def grade(s: Scenario, t: Transcript) -> Grade:  # noqa: C901 - one rule set per
                 _has(a, k)
                 for k in (
                     "cannot",
+                    "don't have access",
+                    "do not have access",
+                    "not authorized",
+                    "can only",
+                    "unable to",
+                    "not permitted",
                     "can't",
                     "unable",
                     "not able",

@@ -251,7 +251,7 @@ def calib_judge(
     console.print(f"{len(records)} runs, variant={variant}, reps={reps}")
     for name in judges.split(","):
         judge = JUDGE_FACTORIES[name]()
-        w = 1 if name in ("kev", "local") else workers
+        w = 1 if name in ("kev", "kev-strict", "local") else workers
 
         def progress(i, n, v, judge=judge):
             if v.error:
