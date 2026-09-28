@@ -121,5 +121,52 @@ def data(n: int = 8) -> None:
     console.print(t)
 
 
+calib = typer.Typer(
+    help="Judge calibration study: generate scenarios, collect runs, judge, report."
+)
+app.add_typer(calib, name="calib")
+
+
+@calib.command("generate")
+def calib_generate(n: int = 8) -> None:
+    """Show the scenario set (counts by category and a sample)."""
+    import collections
+
+    from payerbench.calibration.scenarios import generate
+
+    scenarios = generate()
+    counts = collections.Counter(s.category for s in scenarios)
+    t = Table(title=f"{len(scenarios)} scenarios")
+    t.add_column("category")
+    t.add_column("count", justify="right")
+    for c, k in sorted(counts.items()):
+        t.add_row(c, str(k))
+    console.print(t)
+    for s in scenarios[:n]:
+        console.print(f"[dim]{s.id}[/dim] {s.user_text}")
+
+
+@calib.command("collect")
+def calib_collect(
+    out: str = "data/calibration/runs.jsonl",
+    limit: int | None = typer.Option(None, help="Run at most this many new scenarios"),
+) -> None:
+    """Run the agent over every scenario (resumable) and grade each answer deterministically."""
+    from pathlib import Path
+
+    from payerbench.calibration.collect import collect
+    from payerbench.calibration.scenarios import generate
+
+    _setup_tracing()
+
+    def progress(i, n, s, g, elapsed):
+        colour = {"pass": "green", "fail": "red", "review": "yellow", "error": "magenta"}[g.label]
+        why = f" [dim]{'; '.join(g.reasons)[:90]}[/dim]" if g.reasons else ""
+        console.print(f"[{i}/{n}] [{colour}]{g.label:5}[/{colour}] {s.id:28} {elapsed:5.1f}s{why}")
+
+    counts = collect(generate(), Path(out), limit=limit, progress=progress)
+    console.print(counts)
+
+
 if __name__ == "__main__":
     app()
