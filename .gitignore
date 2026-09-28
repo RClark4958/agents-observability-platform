@@ -18,3 +18,4 @@ data/traces/
 # docs build / scratch
 docs/_build/
 scratch/
+.playwright-mcp/
