@@ -168,6 +168,37 @@ def calib_collect(
     console.print(counts)
 
 
+@calib.command("regrade")
+def calib_regrade(
+    runs: str = "data/calibration/runs-gemma4-31b.jsonl,data/calibration/runs-qwen3-0.6b.jsonl",
+) -> None:
+    """Re-apply the current grading rules to collected runs in place (human labels are kept)."""
+    import json
+    from pathlib import Path
+
+    from payerbench.calibration.scenarios import Scenario, Transcript, grade
+
+    for p in runs.split(","):
+        path = Path(p)
+        if not path.exists():
+            continue
+        recs = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        changed = 0
+        for r in recs:
+            if r.get("gold") == "error":
+                continue
+            s = Scenario(
+                r["id"], r["category"], r["member_id"], r["user_text"], r["expected"], r["persona"]
+            )
+            g = grade(s, Transcript(r["final_answer"], r["tool_calls"]))
+            if g.label != r["gold"] or g.reasons != r["gold_reasons"]:
+                changed += 1
+            r["gold"], r["gold_reasons"] = g.label, g.reasons
+        path.write_text("".join(json.dumps(r) + "\n" for r in recs))
+        counts = {k: sum(1 for r in recs if r["gold"] == k) for k in ("pass", "fail", "error")}
+        console.print(f"{path.name}: {len(recs)} runs, {changed} regraded, {counts}")
+
+
 @calib.command("judge")
 def calib_judge(
     judges: str = typer.Option(
