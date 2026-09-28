@@ -29,7 +29,7 @@ Project 1 of [ROADMAP.md](ROADMAP.md) is complete; findings are in [docs/WRITEUP
 - [x] PHI redaction in the collector, layer 1: pattern rules (`just verify --phi-since <epoch>` probes for leaks)
 - [x] PHI redaction, layer 2: Presidio exporter wrapper in the agent for free-text names (`uv sync --extra redact`)
 - [x] LangSmith receives the same redacted stream over OTLP (`OTEL_EXTRA_CONFIG=langsmith.yaml`)
-- [~] Claude Code telemetry routed into the same collector (deferred; the collector accepts it as-is)
+- [~] Developer-tool telemetry (IDE agents, CLIs) routed into the same collector (deferred; the collector accepts any OTLP source as-is)
 - [x] Write-up: [docs/WRITEUP.md](docs/WRITEUP.md), same span in four backends with measured numbers
 
 ## Layout

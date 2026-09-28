@@ -25,7 +25,7 @@ comparison, HN "Who is using MCP in production?", r/LocalLLaMA + openclawdc M5 U
 **Tooling consensus**
 - Tracing/evals: LangSmith (LangGraph-native, $39/seat, self-host = Enterprise only), Langfuse (MIT, self-host = Postgres+ClickHouse+Redis+S3, acquired by ClickHouse), Arize Phoenix (OpenInference/OTel-native, OSS), Braintrust (CI gates as "a defining use case", closed), MLflow 3 (your work stack; Databricks stores traces in the Lakehouse).
 - Standard: **OpenTelemetry GenAI semantic conventions** (still "Development" status at v1.41; `gen_ai.operation.name` = `chat|invoke_agent|execute_tool|invoke_workflow`, `gen_ai.tool.name`, `gen_ai.usage.*`, `gen_ai.evaluation.result` event, MCP conventions `mcp.method.name`/`mcp.session.id`). Vendor-neutral instrumentation is the skill that survives vendor churn.
-- **Jev** (TypeSafe AI): a "System One" decision model. Not an LLM; takes `state` + typed questions (Noul = P(true), Choice, Score) and returns probabilities + confidence. $0.042/M input tokens, free output, ~100–500 ms. Shipped as a LangSmith Evals judge Sept 21; integrated in Braintrust, DeepEval (`hybrid`/`system_one` modes), Pydantic AI (`typesafe:jev-latest`), Langfuse, Vercel AI Gateway. LangChain's own test: Jev matched a human oracle on 500/500 binary decisions vs Claude 80%, at $0.34 vs $28.17. Known weakness: adversarial text in `state` moves the answer (Octomind: block-probability fell 0.76 → 0.48 after a fake "pre-approved" tool output). Rule everyone now repeats: **"don't let the classifier become the authorizer."**
+- **Jev** (TypeSafe AI): a "System One" decision model. Not an LLM; takes `state` + typed questions (Noul = P(true), Choice, Score) and returns probabilities + confidence. $0.042/M input tokens, free output, ~100–500 ms. Shipped as a LangSmith Evals judge Sept 21; integrated in Braintrust, DeepEval (`hybrid`/`system_one` modes), Pydantic AI (`typesafe:jev-latest`), Langfuse, Vercel AI Gateway. LangChain's own test: Jev matched a human oracle on 500/500 binary decisions vs 80% for a frontier LLM judge, at $0.34 vs $28.17. Known weakness: adversarial text in `state` moves the answer (Octomind: block-probability fell 0.76 → 0.48 after a fake "pre-approved" tool output). Rule everyone now repeats: **"don't let the classifier become the authorizer."**
 - Local Jev-alikes: **Kev** (`jaredpalmer/kev-4b`, self-hosted, runs on a 32 GB Mac) and **Laya** (ModernBERT, ~10 ms in-process on Apple Silicon). Your 256 GB machine can run all of these plus the agent under test plus a simulated user.
 - Red teaming: promptfoo (YAML red-team, acquired by OpenAI Mar 2026), PyRIT (Microsoft, multi-turn), garak (probe scanner), DeepTeam, Inspect AI + **Inspect Petri v3** (Anthropic → Meridian Labs/UK AISI; auditor/target/judge agents, 170+ seeds, 38 dimensions, supports a custom target driver for your own LangGraph scaffolding), Petri Bloom for single-behavior suites.
 - Simulated users: **τ²-bench** (Sierra; agent + simulated user modify shared world state; pass^k), Terminal-Bench 2.0.
@@ -55,7 +55,7 @@ Build one synthetic health-plan **member-services agent** once, and reuse it in 
 - Domain: eligibility lookup, claims status, prior-auth status/rules, benefits FAQ over a fake plan document, provider search. Fully synthetic members with fake-but-realistic PHI so redaction is testable.
 - Framework: LangGraph (your strength) with tools exposed both as Python functions and as an MCP server (so MCP security tests are possible).
 - Policy doc + world state DB (SQLite/Postgres) so a τ²-style simulator can check outcome, not just wording.
-- Model-agnostic via LiteLLM: local (`mlx_lm.server` / `llama-server` on :8080) or cloud (Claude, GPT) with one env var.
+- Model-agnostic via LiteLLM: local (`mlx_lm.server` / `llama-server` on :8080) or cloud (Anthropic, OpenAI) with one env var.
 - Lives in this repo under `agent/`.
 
 ---
@@ -67,13 +67,13 @@ Goal: one OTel pipeline, four backends, one write-up comparing them. Directly fi
 - `docker compose`: Langfuse (Postgres + ClickHouse + Redis + MinIO), Arize Phoenix, OTel Collector, grafana/otel-lgtm (Tempo/Loki/Prometheus/Grafana).
 - Instrument PayerBench with OTel GenAI semconv (`OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental`), LangGraph via OpenInference/`openllmetry`, plus MCP spans. Fan out from the Collector to Langfuse, Phoenix, Tempo, and **LangSmith cloud** (OTLP endpoint) simultaneously. Same trace, four UIs. This is how you learn LangSmith deeply while staying vendor-neutral.
 - PHI handling: Collector processor running Presidio redaction; use the semconv "external storage + reference URL" content mode for raw messages. Document the HIPAA rationale.
-- Route Claude Code's own OTel export into the same stack (already in your plan).
+- Route developer-tool telemetry (IDE agents, CLIs) into the same stack; anything that emits OTLP works.
 - Deliverable: repo + post "Same agent, four observability backends: what each one loses."
 
 ### P2. Judge Calibration Study: LLM vs Jev vs local classifier — weeks 3–5
 Goal: the most differentiating artifact on this list. Fills gaps #2 and #3. Nobody has public calibration numbers for Jev-class judges on domain data yet.
 - Run PayerBench on ~200 scenarios; hand-label binary pass/fail (LangChain guidance: binary beats 1–5; start with ≥20 labels, aim for 200).
-- Judges: Claude + GPT via LangSmith Evals and `openevals`; Jev via LangSmith Evals, `jevals`, and Pydantic AI `TypeSafeModel`; **Kev-4b and Laya running locally on the Mac**; DeepEval in `hybrid` and `system_one` modes.
+- Judges: frontier LLM judges (Anthropic, OpenAI) via LangSmith Evals and `openevals`; Jev via LangSmith Evals, `jevals`, and Pydantic AI `TypeSafeModel`; **Kev-4b and Laya running locally on the Mac**; DeepEval in `hybrid` and `system_one` modes.
 - Measure: oracle agreement, repeatability over 100 reps (LangChain's "signal value" = agreement × repeatability), Brier/ECE/AUROC (`jevals calibrate`), cost, p50/p95 latency.
 - Reproduce the Octomind injection: put a fake "pre-approved" field in a tool result and show how each judge's verdict moves; then show the fix (exclude tool output from judge `state`).
 - Stretch: distill the human labels into a **Qwen3-4B LoRA classifier with MLX** and add it to the table. That is the "System One" trend in your own hands.

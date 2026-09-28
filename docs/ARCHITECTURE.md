@@ -9,7 +9,7 @@
                                         │ OTLP/HTTP :4318
                                         ▼
                          ┌──────────────────────────────┐
-  Claude Code OTLP ─────▶│  OTel Collector (contrib)     │
+  Dev-tool OTLP    ─────▶│  OTel Collector (contrib)     │
   LiteLLM OTLP     ─────▶│  memory_limiter → redact →   │
                          │  batch                        │
                          └──┬──────────┬────────┬───────┘
@@ -138,7 +138,7 @@ example, `"name": "[REDACTED_PERSON]"` rather than the name.
 
 This is the one place a few lines of Python are unavoidable; it is still standard OpenTelemetry,
 not a vendor SDK, and the redactor itself is Presidio, not ours. The reason it is not the only
-layer: the collector layer also protects telemetry from sources we do not control (Claude Code, the
+layer: the collector layer also protects telemetry from sources we do not control (IDE agents, the
 model gateway) and is enforced by platform config rather than by each application remembering to
 install a processor.
 

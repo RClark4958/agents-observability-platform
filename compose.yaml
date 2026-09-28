@@ -177,7 +177,7 @@ services:
       - lgtm_data:/data
 
   # ---------------------------------------------------------------- OTel Collector
-  # The only OTLP endpoint the agent, LiteLLM, and Claude Code talk to.
+  # The only OTLP endpoint the agent, the model gateway, and any developer tooling talk to.
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     restart: unless-stopped
