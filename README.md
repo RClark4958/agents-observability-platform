@@ -20,6 +20,9 @@ identical stream of data, and to keep the agent code free of any vendor SDK.
 ## Status
 
 Project 1 of [ROADMAP.md](ROADMAP.md) is complete; findings are in [docs/WRITEUP.md](docs/WRITEUP.md).
+Project 2, the judge calibration study, is complete: [docs/CALIBRATION_WRITEUP.md](docs/CALIBRATION_WRITEUP.md),
+with the running log in [docs/CALIBRATION_NOTES.md](docs/CALIBRATION_NOTES.md) and the dataset
+(541 graded runs, 16,050 verdicts) under `data/calibration/`.
 
 - [x] Compose stack boots (Langfuse, Phoenix, otel-lgtm, collector)
 - [x] Smoke span arrives in all local backends (`just verify`)

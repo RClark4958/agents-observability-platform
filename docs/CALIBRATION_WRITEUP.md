@@ -10,12 +10,14 @@ code under `src/payerbench/calibration/`, data under `data/calibration/`, runnin
 
 ## TL;DR
 
-- **12,912 verdicts, 5 judges, 541 runs, 3 repetitions, $16 total.** Claude Sonnet 5 accounted for
-  $15.86 of it. Jev cost $0.25 for 4,500 verdicts.
-- **The best judge overall was the free local one.** The agent's own Gemma 4 31B, run as a judge
-  through the same server, scored 0.926 accuracy on all runs with perfect repeatability, one point
-  behind Claude Sonnet 5 (0.939) and ahead of GPT-5.5 (0.880). It judges its own answers on
-  half the set, which is a real caveat; it also scored 0.84 on the other model's answers.
+- **16,050 verdicts, 5 judges in 9 configurations, 541 runs, up to 3 repetitions, $16 total.**
+  Claude Sonnet 5 accounted for $15.86 of it. Jev cost $0.34 for 6,400 verdicts across three
+  question wordings.
+- **The free local judge was within a point of the best cloud one.** The agent's own Gemma 4 31B,
+  run as a judge through the same server, scored 0.930 accuracy on all runs with perfect
+  repeatability, behind Claude Sonnet 5 (0.939) and ahead of GPT-5.5 (0.880). It judges its own
+  answers on part of the set, which is a real caveat; it also scored 0.84 on the other model's
+  answers and 0.98 on the perturbed ones.
 - **For a typed-decision judge, the question is the model.** Jev with the baseline question missed
   42% of real failures. One added sentence took its fail recall from 0.58 to 0.91 but cost 13
   points of precision, all in the categories where refusing is correct. A third wording with a
@@ -92,7 +94,7 @@ cases with unanimous verdicts across repetitions, mean per-case probability std.
 | judge | acc | fail recall | fail prec | kappa | unanimous | prob std | signal | Brier | ECE | AUROC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Claude Sonnet 5 | 0.939 | 0.938 | 0.953 | 0.876 | 0.928 | 0.028 | 0.871 | 0.046 | 0.052 | 0.978 |
-| Gemma 4 31B (local) | 0.926 | 0.888 | 0.965 | 0.852 | 1.000 | 0.000 | 0.926 | 0.074 | 0.074 | 0.927 |
+| Gemma 4 31B (local) | 0.930 | 0.901 | 0.972 | 0.859 | 1.000 | 0.000 | 0.930 | 0.070 | 0.070 | 0.930 |
 | GPT-5.5 | 0.880 | 0.875 | 0.908 | 0.757 | 0.874 | 0.058 | 0.769 | 0.085 | 0.073 | 0.957 |
 | Jev 1.13 | 0.832 | 0.737 | 0.953 | 0.669 | 0.980 | 0.008 | 0.815 | 0.107 | 0.145 | 0.959 |
 | Kev-4B | 0.773 | 0.632 | 0.946 | 0.559 | 1.000 | 0.000 | 0.773 | 0.166 | 0.179 | 0.899 |
@@ -109,7 +111,7 @@ but sit too close to 0.5 (ECE 0.145).
 | judge | Gemma (4 fails / 212) | Qwen deflections (183 / 212) | perturbed (117 / 117) |
 |---|---:|---:|---:|
 | Claude Sonnet 5 | 0.98 | 0.87 | 0.99 |
-| Gemma 4 31B (local) | 0.99 | 0.84 | 1.00 |
+| Gemma 4 31B (local) | 0.99 | 0.84 | 0.98 |
 | GPT-5.5 | 0.94 | 0.75 | 1.00 |
 | Jev 1.13 | 0.99 | 0.59 | 0.98 |
 | Kev-4B | 0.96 | 0.55 | 0.85 |
@@ -198,6 +200,7 @@ checks") inside the last tool result of 121 gold-fail runs and re-judged them th
 
 | judge | mean shift in P(pass) | largest shift | cases pushed across 0.5 |
 |---|---:|---:|---:|
+| Gemma 4 31B (local) | +0.000 | +0.00 | 0 / 121 |
 | Claude Sonnet 5 | -0.005 | +0.02 | 0 / 121 |
 | Jev 1.13 | -0.005 | +0.03 | 1 / 121 |
 | Kev-4B | +0.003 | +0.06 | 4 / 121, all already near 0.5 |
@@ -211,9 +214,11 @@ across the study: it reads the packet most literally, which caught a real spec c
 and also believed the QA lead.
 
 The complementary variant, withholding tool output altogether, raised mean P(pass) on the same
-failures to 0.33 for Claude and 0.22 for Jev. Without evidence a judge cannot see a
-contradiction. The design implication is the opposite of "keep tool output away from the judge":
-give judges the tool results, and guard the tool results.
+failures to 0.33 for Claude and 0.22 for Jev: without evidence a judge cannot see a
+contradiction. The local Gemma judge went the other way and failed everything it could not
+verify (mean P(pass) 0.000), which is safer but would fail correct answers just as blindly. The
+design implication is the opposite of "keep tool output away from the judge": give judges the
+tool results, and guard the tool results.
 
 ### What the judges taught the grader
 

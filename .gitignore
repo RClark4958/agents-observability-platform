@@ -19,3 +19,4 @@ data/traces/
 docs/_build/
 scratch/
 .playwright-mcp/
+data/calibration/*.log
