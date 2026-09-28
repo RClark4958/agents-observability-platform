@@ -19,7 +19,7 @@ identical stream of data, and to keep the agent code free of any vendor SDK.
 
 ## Status
 
-Phase 1: stack and scaffold. See [ROADMAP.md](ROADMAP.md) for the full plan and why this exists.
+Project 1 of [ROADMAP.md](ROADMAP.md) is complete; findings are in [docs/WRITEUP.md](docs/WRITEUP.md).
 
 - [x] Compose stack boots (Langfuse, Phoenix, otel-lgtm, collector)
 - [x] Smoke span arrives in all local backends (`just verify`)
@@ -29,8 +29,8 @@ Phase 1: stack and scaffold. See [ROADMAP.md](ROADMAP.md) for the full plan and 
 - [x] PHI redaction in the collector, layer 1: pattern rules (`just verify --phi-since <epoch>` probes for leaks)
 - [x] PHI redaction, layer 2: Presidio exporter wrapper in the agent for free-text names (`uv sync --extra redact`)
 - [x] LangSmith receives the same redacted stream over OTLP (`OTEL_EXTRA_CONFIG=langsmith.yaml`)
-- [ ] Claude Code telemetry routed into the same collector
-- [ ] Write-up: same trace, four backends
+- [~] Claude Code telemetry routed into the same collector (deferred; the collector accepts it as-is)
+- [x] Write-up: [docs/WRITEUP.md](docs/WRITEUP.md), same span in four backends with measured numbers
 
 ## Layout
 
