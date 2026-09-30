@@ -20,3 +20,4 @@ docs/_build/
 scratch/
 .playwright-mcp/
 data/calibration/*.log
+data/redteam/*.log

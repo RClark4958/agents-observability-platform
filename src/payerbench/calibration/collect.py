@@ -40,13 +40,35 @@ def _transcript(messages: list[Any]) -> Transcript:
     return Transcript(final_answer=final, tool_calls=[calls[i] for i in order])
 
 
+def _session(s: Scenario, config: str):
+    from payerbench.redteam.cases import CALLERS
+    from payerbench.redteam.run import CONFIGS, MINIMAL_PROMPT
+    from payerbench.session import Session, use_session
+
+    return use_session(
+        Session(
+            member_id=s.member_id or CALLERS["A"],
+            defenses=frozenset(CONFIGS[config]),
+            prompt="minimal" if config in MINIMAL_PROMPT else "full",
+        )
+    )
+
+
 def collect(
     scenarios: list[Scenario],
     out_path: Path,
     limit: int | None = None,
     progress: Any = None,
+    session_config: str | None = None,
 ) -> dict[str, int]:
-    """Run each scenario once through the agent. Returns counts by gold label."""
+    """Run each scenario once through the agent. Returns counts by gold label.
+
+    `session_config` (a red-team config name such as "all") runs every scenario in session mode
+    with the scenario's member as the verified caller, to measure what defenses cost on ordinary
+    traffic. Scenarios without a member use red-team caller A.
+    """
+    import contextlib
+
     from opentelemetry import trace
 
     from payerbench.agent import build_agent, run_turn
@@ -59,7 +81,7 @@ def collect(
                 if line.strip():
                     done.add(json.loads(line)["id"])
 
-    agent = build_agent()
+    agent = build_agent(redteam=session_config is not None)
     tracer = trace.get_tracer("payerbench.calibration")
     model = os.getenv("PAYERBENCH_MODEL", "unknown")
     counts: dict[str, int] = {"pass": 0, "fail": 0, "review": 0, "error": 0, "skipped": len(done)}
@@ -80,7 +102,10 @@ def collect(
             ) as span:
                 t0 = time.perf_counter()
                 try:
-                    result = run_turn(agent, s.user_text)
+                    with (
+                        _session(s, session_config) if session_config else contextlib.nullcontext()
+                    ):
+                        result = run_turn(agent, s.user_text)
                     t = _transcript(result["messages"])
                     g = grade(s, t)
                     error = None

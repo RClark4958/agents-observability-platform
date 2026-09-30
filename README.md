@@ -23,6 +23,9 @@ Project 1 of [ROADMAP.md](ROADMAP.md) is complete; findings are in [docs/WRITEUP
 Project 2, the judge calibration study, is complete: [docs/CALIBRATION_WRITEUP.md](docs/CALIBRATION_WRITEUP.md),
 with the running log in [docs/CALIBRATION_NOTES.md](docs/CALIBRATION_NOTES.md) and the dataset
 (541 graded runs, 16,050 verdicts) under `data/calibration/`.
+Project 3, the adversarial regression suite, is complete: [docs/REDTEAM_WRITEUP.md](docs/REDTEAM_WRITEUP.md),
+with the seed pack in `src/payerbench/redteam/seeds.yaml`, promptfoo and Inspect Petri harnesses
+under `redteam/`, and results under `data/redteam/`.
 
 - [x] Compose stack boots (Langfuse, Phoenix, otel-lgtm, collector)
 - [x] Smoke span arrives in all local backends (`just verify`)
@@ -41,7 +44,12 @@ with the running log in [docs/CALIBRATION_NOTES.md](docs/CALIBRATION_NOTES.md) a
 compose.yaml            Langfuse (+ Postgres, ClickHouse, Redis, MinIO), Phoenix, otel-lgtm, collector
 otel/                   Collector configs: base.yaml, langsmith.yaml (cloud add-on), noop.yaml
 src/payerbench/         The agent, its tools, synthetic data, and telemetry setup
-scripts/                smoke_trace.py and other one-off helpers
+  calibration/          P2: judge calibration (scenarios, judges, metrics, report)
+  redteam/              P3: seed pack, deterministic detectors, runner, report
+  session.py            Verified-caller session and defense switches the tools read
+  guards.py             Finds other members' identifiers in text (output gate, detectors)
+redteam/                promptfoo config and provider; Inspect Petri task, seeds, dimensions
+scripts/                smoke_trace.py, verify_backends.py, redteam_to_langfuse.py
 tests/                  pytest
 docs/                   Architecture notes and the eventual write-up
 .env.example            Every variable the stack reads; copy to .env

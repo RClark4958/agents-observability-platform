@@ -30,6 +30,9 @@ redact = [
     "presidio-anonymizer>=2.2.360",
     "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl",
 ]
+redteam = [
+    "inspect-petri>=3.1",
+]
 
 [project.scripts]
 payerbench = "payerbench.cli:app"

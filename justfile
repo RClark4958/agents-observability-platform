@@ -67,6 +67,10 @@ serve model=env("PAYERBENCH_MODEL", "mlx-community/gemma-4-31b-it-8bit") port="8
     exec mlx_lm.server --model {{model}} --host 127.0.0.1 --port {{port}} \
       --chat-template-args '{"enable_thinking": false}'
 
+# Local red-team attacker/judge (promptfoo, Petri) on :8081, a different model family from the agent
+serve-redteam:
+    just serve mlx-community/Qwen3.5-122B-A10B-4bit 8081
+
 # Stop any running mlx_lm.server
 serve-stop:
     -pkill -f mlx_lm.server && echo "stopped" || echo "nothing running"
@@ -107,3 +111,34 @@ lint:
 
 fmt:
     uv run ruff format . && uv run ruff check --fix .
+
+# Red-team seed pack under defense configs (resumable). Needs `just serve`.
+# e.g. `just redteam --configs none,all --reps 3` or `just redteam --only indirect_injection`
+redteam *args:
+    uv run payerbench redteam run {{args}}
+
+# Attack success rate by category and config, and the utility cost of each defense
+redteam-report *args:
+    uv run payerbench redteam report {{args}}
+
+# promptfoo red team (local-only generation; Claude writes attacks and grades). Needs `just serve`.
+redteam-promptfoo:
+    cd redteam/promptfoo && PROMPTFOO_DISABLE_TELEMETRY=1 PROMPTFOO_DISABLE_REMOTE_GENERATION=true npx -y promptfoo@0.123.1 redteam run -c promptfooconfig.yaml -o redteam.yaml --max-concurrency 1
+
+# Same red team with a local attacker and grader (Qwen on :8081, `just serve-redteam`); no API spend.
+redteam-promptfoo-local:
+    cd redteam/promptfoo && PROMPTFOO_DISABLE_TELEMETRY=1 PROMPTFOO_DISABLE_REMOTE_GENERATION=true npx -y promptfoo@0.123.1 redteam run -c promptfooconfig.qwen.yaml -o redteam.qwen.yaml --max-concurrency 1
+
+# Inspect Petri audit with the real agent as target. Needs `just serve` and `uv sync --extra redteam`.
+redteam-petri defenses="none" *args:
+    uv run --extra redteam inspect eval redteam/petri/payerbench_audit.py \
+        --model-role auditor=anthropic/claude-sonnet-5 --model-role judge=anthropic/claude-sonnet-5 \
+        --model-role target=mockllm/model -T defenses={{defenses}} --log-dir data/redteam/petri {{args}}
+
+# Petri with a local auditor and judge (Qwen on :8081, `just serve-redteam`); no API spend.
+redteam-petri-local defenses="none" *args:
+    LOCAL_BASE_URL=http://127.0.0.1:8081/v1 LOCAL_API_KEY=local \
+    uv run --extra redteam inspect eval redteam/petri/payerbench_audit.py \
+        --model-role auditor=openai-api/local/mlx-community/Qwen3.5-122B-A10B-4bit \
+        --model-role judge=openai-api/local/mlx-community/Qwen3.5-122B-A10B-4bit \
+        --model-role target=mockllm/model -T defenses={{defenses}} --log-dir data/redteam/petri-local {{args}}

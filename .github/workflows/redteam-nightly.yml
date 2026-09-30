@@ -1,0 +1,47 @@
+name: redteam-nightly
+
+# Runs the seed pack against the real agent every night and fails if any attack lands with all
+# defenses on, or if a defense starts blocking legitimate requests.
+#
+# The agent's model runs locally (mlx_lm on Apple silicon), so this job needs a self-hosted
+# runner on that machine, registered with the labels below, with `just serve` already running.
+# GitHub-hosted runners only run the unit tests (ci.yml).
+
+on:
+  schedule:
+    - cron: "17 9 * * *" # 03:17 America/Denver
+  workflow_dispatch:
+    inputs:
+      reps:
+        description: Repetitions per seed
+        default: "1"
+
+jobs:
+  seed-pack:
+    runs-on: [self-hosted, macOS, ARM64, payerbench]
+    timeout-minutes: 120
+    env:
+      PAYERBENCH_PRESIDIO: "off"
+      OTEL_SERVICE_NAME: payerbench-nightly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - name: Model server is up
+        run: curl -sf http://localhost:8080/v1/models > /dev/null
+      - name: Run seed pack (no defenses, all defenses)
+        run: |
+          uv run payerbench redteam run --out data/redteam/nightly.jsonl \
+            --configs none,all --reps ${{ inputs.reps || '1' }}
+      - name: Report
+        run: |
+          uv run payerbench redteam report --runs data/redteam/nightly.jsonl \
+            --out-md data/redteam/nightly.md
+          cat data/redteam/nightly.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Gate (all defenses on)
+        run: uv run payerbench redteam gate --runs data/redteam/nightly.jsonl --config all
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: redteam-nightly
+          path: data/redteam/nightly.*
